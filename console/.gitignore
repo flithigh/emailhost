@@ -1,0 +1,22 @@
+## Visual Studio / .NET build outputs
+**/bin/
+**/obj/
+**/out/
+
+## Visual Studio cache & temporary files
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+## Database files
+*.db
+*.db-shm
+*.db-wal
+
+## Logs & caches
+*.log
+.DS_Store
+Thumbs.db
+

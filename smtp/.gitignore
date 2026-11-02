@@ -1,0 +1,16 @@
+## Visual Studio / .NET build outputs
+bin/
+obj/
+out/
+
+## Database and storage files
+*.db
+*.db-shm
+*.db-wal
+storage/
+*.log
+
+## Visual Studio cache
+.vs/
+*.user
+

@@ -1,0 +1,25 @@
+## Visual Studio / Build artifacts
+**/bin/
+**/obj/
+.vs/
+.vscode/
+
+## SQLite & Temporary DB files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.db-journal
+
+## Local Storage & Emulation Fallbacks
+**/storage/
+storage/
+
+## User Settings & Logs
+*.user
+*.suo
+*.log
+**/appsettings.Development.json
