@@ -1,0 +1,74 @@
+# Flitflap Email Host - Docker Deployment Architecture
+
+This document describes the multi-container Docker and Docker Compose infrastructure configuration for the **Flitflap Email Host** distributed platform.
+
+---
+
+## 1. Container Topology & Port Allocations
+
+| Container Service | Base Image / Build Context | Internal / Host Port | Purpose |
+| :--- | :--- | :--- | :--- |
+| **`postgres`** | `postgres:16-alpine` | `5432:5432` | Dual-tier PostgreSQL: `flitflap_master` & `flitflap_tenant_default` |
+| **`garage`** | `minio/minio:latest` | `3900:3900`, `9001:9001` | High-performance S3 Object Storage (`flitflap-mail-store`) |
+| **`clamav`** | `clamav/clamav:latest` | `3310:3310` | ClamAV TCP daemon attachment scanner (`INSTREAM`) |
+| **`smtp`** | `./smtp` (`net9.0`) | `25`, `587`, `465`, `5000` | Core MTA Daemon: 2048-bit DKIM, SPF, DMARC, Mail Tracer API |
+| **`admin`** | `./admin` (`net9.0`) | `5001:5001` | Super Admin Web Console (Tenants, IP pools, RBL audits, abuse rules) |
+| **`webmail`** | `./webmail` (`net9.0`) | `5002:5002` | End-User React 18 Webmail Client (Compose, Folders, Contacts) |
+| **`support`** | `./support` (`net9.0`) | `5003:5003` | Staff Support Desk (Mail Tracer timeline, live DNS inspector, tickets) |
+| **`promote`** | `./promote` (`net9.0`) | `5004:5004` | Public Showcase, pricing calculator, MX deliverability scanner |
+| **`console`** | `./console` (`net9.0`) | On-Demand CLI | Tenant Admin CLI (Domain DNS keygen, mailbox provisioning) |
+
+---
+
+## 2. Docker Compose Commands
+
+### Launch Entire Platform in Background
+```bash
+docker compose up -d --build
+```
+
+### View Live Logs Across All Services
+```bash
+docker compose logs -f
+```
+
+### Run Tenant Client Console Interactively
+```bash
+docker compose run --rm console
+```
+
+### Scale or Restart Specific Services
+```bash
+docker compose restart smtp
+docker compose restart webmail
+```
+
+### Tear Down Cluster with Volumes Preserved
+```bash
+docker compose down
+```
+
+### Tear Down Cluster and Reset All Volumes
+```bash
+docker compose down -v
+```
+
+---
+
+## 3. Environment Variables Injected via Compose
+
+- **PostgreSQL**:
+  - `Database__Provider=PostgreSQL`
+  - `Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;`
+  - `Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;`
+- **Garage S3 Storage**:
+  - `Garage__Endpoint=http://garage:3900`
+  - `Garage__Bucket=flitflap-mail-store`
+  - `Garage__AccessKey=garage_access_key`
+  - `Garage__SecretKey=garage_secret_key`
+- **ClamAV Anti-Virus**:
+  - `Smtp__ClamAvHost=clamav`
+  - `Smtp__ClamAvPort=3310`
+- **SMTP Relay**:
+  - `SmtpRelay__Host=smtp`
+  - `SmtpRelay__Port=587`

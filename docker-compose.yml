@@ -1,0 +1,233 @@
+services:
+  # ---------------------------------------------------------
+  # Infrastructure: PostgreSQL 16 (Dual-Tier Metadata Store)
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: flitflap-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flitflap_master
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Infrastructure: Garage S3 Object Storage (Raw MIME & Blobs)
+  # ---------------------------------------------------------
+  garage:
+    image: minio/minio:latest
+    container_name: flitflap-garage-s3
+    restart: unless-stopped
+    command: server /data --console-address ":9001" --address ":3900"
+    environment:
+      MINIO_ROOT_USER: garage_access_key
+      MINIO_ROOT_PASSWORD: garage_secret_key
+      MINIO_DEFAULT_BUCKETS: flitflap-mail-store
+    ports:
+      - "3900:3900" # S3 API endpoint
+      - "9001:9001" # S3 Web Console
+    volumes:
+      - garage_data:/data
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Infrastructure: ClamAV Daemon (Anti-Virus Scanner)
+  # ---------------------------------------------------------
+  clamav:
+    image: clamav/clamav:latest
+    container_name: flitflap-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 1: Core SMTP MTA Engine (Ports 25, 587, 465, 5000)
+  # ---------------------------------------------------------
+  smtp:
+    build:
+      context: ./smtp
+      dockerfile: Dockerfile
+    container_name: flitflap-smtp
+    restart: unless-stopped
+    ports:
+      - "25:25"     # Inbound MTA Relay
+      - "587:587"   # Submission STARTTLS
+      - "465:465"   # SMTPS Implicit TLS
+      - "5000:5000" # REST API & Health
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+      - Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;
+      - Garage__Enabled=true
+      - Garage__Endpoint=http://garage:3900
+      - Garage__Bucket=flitflap-mail-store
+      - Garage__AccessKey=garage_access_key
+      - Garage__SecretKey=garage_secret_key
+      - Smtp__ClamAvHost=clamav
+      - Smtp__ClamAvPort=3310
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_started
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 2: Super Admin Application (Port 5001)
+  # ---------------------------------------------------------
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: flitflap-admin
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+      - Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;
+      - Garage__Endpoint=http://garage:3900
+      - Garage__Bucket=flitflap-mail-store
+      - Garage__AccessKey=garage_access_key
+      - Garage__SecretKey=garage_secret_key
+      - SmtpEngine__StatusUrl=http://smtp:5000/api/status
+    depends_on:
+      postgres:
+        condition: service_healthy
+      smtp:
+        condition: service_started
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 3: Webmail Client Application (Port 5002)
+  # ---------------------------------------------------------
+  webmail:
+    build:
+      context: ./webmail
+      dockerfile: Dockerfile
+    container_name: flitflap-webmail
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+      - Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;
+      - Garage__Endpoint=http://garage:3900
+      - Garage__Bucket=flitflap-mail-store
+      - Garage__AccessKey=garage_access_key
+      - Garage__SecretKey=garage_secret_key
+      - SmtpRelay__Host=smtp
+      - SmtpRelay__Port=587
+    depends_on:
+      postgres:
+        condition: service_healthy
+      garage:
+        condition: service_started
+      smtp:
+        condition: service_started
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 4: Staff Support Desk (Port 5003)
+  # ---------------------------------------------------------
+  support:
+    build:
+      context: ./support
+      dockerfile: Dockerfile
+    container_name: flitflap-support
+    restart: unless-stopped
+    ports:
+      - "5003:5003"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+      - Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;
+      - Garage__Endpoint=http://garage:3900
+      - SmtpEngine__StatusUrl=http://smtp:5000/api/status
+      - SmtpEngine__TracerUrl=http://smtp:5000/api/tracer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      smtp:
+        condition: service_started
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 5: Promote & Public Showcase (Port 5004)
+  # ---------------------------------------------------------
+  promote:
+    build:
+      context: ./promote
+      dockerfile: Dockerfile
+    container_name: flitflap-promote
+    restart: unless-stopped
+    ports:
+      - "5004:5004"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - flitflap-network
+
+  # ---------------------------------------------------------
+  # Service 6: Tenant Client Console (Interactive CLI)
+  # ---------------------------------------------------------
+  console:
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+    container_name: flitflap-console
+    profiles:
+      - cli
+    stdin_open: true
+    tty: true
+    environment:
+      - Database__Provider=PostgreSQL
+      - Database__MasterPostgreSql=Host=postgres;Port=5432;Database=flitflap_master;Username=postgres;Password=postgres;
+      - Database__TenantPostgreSql=Host=postgres;Port=5432;Database=flitflap_tenant_default;Username=postgres;Password=postgres;
+      - Garage__Endpoint=http://garage:3900
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - flitflap-network
+
+networks:
+  flitflap-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  garage_data:
+  clamav_data:

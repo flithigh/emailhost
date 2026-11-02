@@ -60,7 +60,32 @@ The platform strictly segregates **Operator-tier internal infrastructure** from 
 
 ## 4. Quick Start
 
-### Build All Projects
+### Option A: Run Entire Platform with Docker Compose
+The easiest way to start the entire distributed ecosystem (including PostgreSQL 16, Garage S3, ClamAV, and all applications):
+
+```bash
+docker compose up -d --build
+```
+
+Then access the services in your browser:
+- **Promote / Landing**: [http://localhost:5004](http://localhost:5004)
+- **Webmail Client**: [http://localhost:5002](http://localhost:5002)
+- **Super Admin Console**: [http://localhost:5001](http://localhost:5001)
+- **Staff Support Desk**: [http://localhost:5003](http://localhost:5003)
+- **Garage S3 Console**: [http://localhost:9001](http://localhost:9001)
+- **Core SMTP Daemon**: Ports `25`, `587`, `465` (REST status: [http://localhost:5000](http://localhost:5000))
+
+To run the interactive Tenant CLI inside Docker:
+```bash
+docker compose run --rm console
+```
+
+---
+
+### Option B: Local .NET CLI Run
+Each application can also be compiled and executed directly with .NET 9:
+
+#### Build All Projects
 ```bash
 dotnet build console/console.csproj
 dotnet build smtp/smtp.csproj
@@ -70,7 +95,7 @@ dotnet build support/support.csproj
 dotnet build promote/promote.csproj
 ```
 
-### Launch Services
+#### Launch Services
 Each application can be launched independently in its own terminal:
 
 ```bash
@@ -100,3 +125,4 @@ dotnet run --project console
 - **SPF & DMARC**: Alignment verification and policy enforcement (`reject`, `quarantine`, `none`).
 - **Anti-Spam & Anti-Virus**: Heuristic content scoring and ClamAV TCP daemon (`INSTREAM` on port 3310).
 - **Anti-Spoofing**: Blocks forged external senders attempting to impersonate hosted tenant domains.
+
